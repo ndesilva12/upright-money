@@ -1,5 +1,9 @@
 // Geocoding service for converting location strings to coordinates
 // Uses Google Geocoding API with in-memory caching
+// Persists geocoded coordinates to Firebase to avoid repeated API calls
+
+import { doc, updateDoc } from 'firebase/firestore';
+import { db } from '@/firebase';
 
 const GOOGLE_API_KEY = process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY;
 
@@ -102,4 +106,46 @@ export async function batchGeocodeLocations(
  */
 export function clearGeocodeCache(): void {
   geocodeCache.clear();
+}
+
+/**
+ * Save geocoded coordinates to a brand document in Firebase
+ * This persists the coordinates so we don't need to geocode again
+ */
+export async function saveBrandCoordinates(
+  brandId: string,
+  coordinates: { lat: number; lng: number }
+): Promise<boolean> {
+  try {
+    const brandRef = doc(db, 'brands', brandId);
+    await updateDoc(brandRef, {
+      latitude: coordinates.lat,
+      longitude: coordinates.lng,
+    });
+    console.log(`[Geocoding] Saved coordinates for brand ${brandId}: ${coordinates.lat}, ${coordinates.lng}`);
+    return true;
+  } catch (error) {
+    console.warn(`[Geocoding] Failed to save coordinates for brand ${brandId}:`, error);
+    return false;
+  }
+}
+
+/**
+ * Geocode a brand's location and save to Firebase
+ * Returns the coordinates if successful
+ */
+export async function geocodeAndSaveBrandLocation(
+  brandId: string,
+  location: string
+): Promise<{ lat: number; lng: number } | null> {
+  const coords = await geocodeLocation(location);
+
+  if (coords) {
+    // Save to Firebase in the background (don't await to avoid blocking)
+    saveBrandCoordinates(brandId, coords).catch(() => {
+      // Error already logged in saveBrandCoordinates
+    });
+  }
+
+  return coords;
 }

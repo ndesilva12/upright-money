@@ -70,7 +70,7 @@ import ItemOptionsModal from '@/components/ItemOptionsModal';
 import FollowingFollowersList from '@/components/FollowingFollowersList';
 import LocalBusinessView from '@/components/Library/LocalBusinessView';
 import EndorsementMapView, { MapEntry } from '@/components/EndorsementMapView';
-import { geocodeLocation } from '@/services/geocodingService';
+import { geocodeAndSaveBrandLocation } from '@/services/geocodingService';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { reorderListEntries } from '@/services/firebase/listService';
@@ -816,12 +816,13 @@ export default function UnifiedLibrary({
 
       setIsGeocodingBrands(true);
 
-      // Geocode brands in parallel (with limit)
+      // Geocode brands in parallel and save to Firebase
       const newGeocodedLocations: Record<string, { lat: number; lng: number }> = {};
 
       await Promise.all(
         brandsToGeocode.map(async ({ brandId, location }) => {
-          const coords = await geocodeLocation(location);
+          // This geocodes and saves to Firebase so future lookups don't need geocoding
+          const coords = await geocodeAndSaveBrandLocation(brandId, location);
           if (coords) {
             newGeocodedLocations[brandId] = coords;
           }
