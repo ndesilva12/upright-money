@@ -131,8 +131,6 @@ export default function OnboardingScreen() {
 
   // Handler to exit onboarding and sign out
   const handleExitOnboarding = async () => {
-    // On web, use window.confirm since Alert.alert doesn't work well
-    // On native, use Alert.alert
     const doExit = async () => {
       try {
         console.log('[Onboarding] Exiting onboarding...');
@@ -144,6 +142,7 @@ export default function OnboardingScreen() {
         router.replace('/(auth)/sign-in');
       } catch (error) {
         console.error('[Onboarding] Error signing out:', error);
+        // Force navigation even on error
         router.replace('/(auth)/sign-in');
       }
     };
@@ -163,6 +162,20 @@ export default function OnboardingScreen() {
           { text: 'Exit', style: 'destructive', onPress: doExit },
         ]
       );
+    }
+  };
+
+  // Direct sign out without confirmation - emergency escape
+  const handleForceSignOut = async () => {
+    try {
+      console.log('[Onboarding] Force sign out...');
+      await clearAllStoredData();
+      await signOut();
+      router.replace('/(auth)/sign-in');
+    } catch (error) {
+      console.error('[Onboarding] Force sign out error:', error);
+      // Try to navigate anyway
+      router.replace('/(auth)/sign-in');
     }
   };
 
@@ -475,14 +488,23 @@ export default function OnboardingScreen() {
                   resizeMode="contain"
                 />
               </View>
-              <TouchableOpacity
-                style={[styles.exitButton, { backgroundColor: colors.backgroundSecondary }]}
-                onPress={handleExitOnboarding}
-                activeOpacity={0.7}
-              >
-                <LogOut size={18} color={colors.textSecondary} strokeWidth={2} />
-                <Text style={[styles.exitButtonText, { color: colors.textSecondary }]}>Exit</Text>
-              </TouchableOpacity>
+              <View style={styles.exitButtonsRow}>
+                <TouchableOpacity
+                  style={[styles.exitButton, { backgroundColor: colors.backgroundSecondary }]}
+                  onPress={handleExitOnboarding}
+                  activeOpacity={0.7}
+                >
+                  <LogOut size={18} color={colors.textSecondary} strokeWidth={2} />
+                  <Text style={[styles.exitButtonText, { color: colors.textSecondary }]}>Sign Out</Text>
+                </TouchableOpacity>
+                <TouchableOpacity
+                  style={[styles.exitIconButton, { backgroundColor: colors.danger + '20' }]}
+                  onPress={handleForceSignOut}
+                  activeOpacity={0.7}
+                >
+                  <X size={20} color={colors.danger} strokeWidth={2.5} />
+                </TouchableOpacity>
+              </View>
             </View>
             <View style={[styles.stepIndicator, { backgroundColor: colors.backgroundSecondary }]}>
               <Text style={[styles.stepText, { color: colors.primary }]}>Step 1 of 2</Text>
@@ -697,14 +719,23 @@ export default function OnboardingScreen() {
                 resizeMode="contain"
               />
             </View>
-            <TouchableOpacity
-              style={[styles.exitButton, { backgroundColor: colors.backgroundSecondary }]}
-              onPress={handleExitOnboarding}
-              activeOpacity={0.7}
-            >
-              <LogOut size={18} color={colors.textSecondary} strokeWidth={2} />
-              <Text style={[styles.exitButtonText, { color: colors.textSecondary }]}>Exit</Text>
-            </TouchableOpacity>
+            <View style={styles.exitButtonsRow}>
+              <TouchableOpacity
+                style={[styles.exitButton, { backgroundColor: colors.backgroundSecondary }]}
+                onPress={handleExitOnboarding}
+                activeOpacity={0.7}
+              >
+                <LogOut size={18} color={colors.textSecondary} strokeWidth={2} />
+                <Text style={[styles.exitButtonText, { color: colors.textSecondary }]}>Sign Out</Text>
+              </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.exitIconButton, { backgroundColor: colors.danger + '20' }]}
+                onPress={handleForceSignOut}
+                activeOpacity={0.7}
+              >
+                <X size={20} color={colors.danger} strokeWidth={2.5} />
+              </TouchableOpacity>
+            </View>
           </View>
           {isBusinessUser && (
             <View style={[styles.stepIndicator, { backgroundColor: colors.backgroundSecondary }]}>
@@ -909,6 +940,18 @@ const styles = StyleSheet.create({
   exitButtonText: {
     fontSize: 14,
     fontWeight: '500' as const,
+  },
+  exitButtonsRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  exitIconButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   logoContainer: {
     width: 200,
