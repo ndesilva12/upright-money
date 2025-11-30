@@ -208,7 +208,7 @@ export default function PlaceDetailScreen() {
             </View>
           )}
 
-          {/* Place Info with Logo on left, info in middle, photos on right */}
+          {/* Place Info with Logo on left, info on right */}
           <View style={styles.infoSection}>
             <View style={styles.infoHeader}>
               {/* Logo on left */}
@@ -237,7 +237,7 @@ export default function PlaceDetailScreen() {
                 </View>
               )}
 
-              {/* Name and category in middle */}
+              {/* Name and category on right */}
               <View style={styles.infoHeaderText}>
                 <Text style={[styles.placeName, { color: colors.text }]}>{place.name}</Text>
                 <View style={styles.categoryRow}>
@@ -279,37 +279,35 @@ export default function PlaceDetailScreen() {
                   </View>
                 )}
               </View>
-
-              {/* Photo thumbnails on right */}
-              {place.photoReferences.length > 1 && (
-                <View style={styles.photoThumbnailsRight}>
-                  {place.photoReferences.slice(0, 4).map((ref, index) => (
-                    <TouchableOpacity
-                      key={index}
-                      onPress={() => setCurrentPhotoIndex(index)}
-                      style={[
-                        styles.thumbnailSmall,
-                        currentPhotoIndex === index && styles.thumbnailActive,
-                      ]}
-                    >
-                      <Image
-                        source={{ uri: getPlacePhotoUrl(ref, 100) }}
-                        style={styles.thumbnailImageSmall}
-                        contentFit="cover"
-                      />
-                    </TouchableOpacity>
-                  ))}
-                  {place.photoReferences.length > 4 && (
-                    <View style={[styles.thumbnailSmall, styles.morePhotos, { backgroundColor: colors.backgroundSecondary }]}>
-                      <Text style={[styles.morePhotosText, { color: colors.textSecondary }]}>
-                        +{place.photoReferences.length - 4}
-                      </Text>
-                    </View>
-                  )}
-                </View>
-              )}
             </View>
           </View>
+
+          {/* Horizontal Photo Thumbnails - above action buttons */}
+          {place.photoReferences.length > 1 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.photoThumbnailsHorizontal}
+              contentContainerStyle={styles.photoThumbnailsContent}
+            >
+              {place.photoReferences.slice(0, 8).map((ref, index) => (
+                <TouchableOpacity
+                  key={index}
+                  onPress={() => setCurrentPhotoIndex(index)}
+                  style={[
+                    styles.thumbnailHorizontal,
+                    currentPhotoIndex === index && styles.thumbnailActive,
+                  ]}
+                >
+                  <Image
+                    source={{ uri: getPlacePhotoUrl(ref, 200) }}
+                    style={styles.thumbnailImageHorizontal}
+                    contentFit="cover"
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
 
           {/* Action Buttons */}
           <View style={styles.actionsContainer}>
@@ -520,11 +518,11 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   photosContainer: {
-    marginBottom: 16,
+    marginBottom: 0,
   },
   mainPhoto: {
     width: '100%',
-    height: 250,
+    height: 220,
   },
   logoContainer: {
     width: 80,
@@ -605,7 +603,26 @@ const styles = StyleSheet.create({
   },
   infoSection: {
     paddingHorizontal: 16,
-    paddingBottom: 16,
+    paddingBottom: 8,
+  },
+  photoThumbnailsHorizontal: {
+    marginBottom: 12,
+    paddingLeft: 16,
+  },
+  photoThumbnailsContent: {
+    paddingRight: 16,
+    gap: 8,
+  },
+  thumbnailHorizontal: {
+    width: 100,
+    height: 70,
+    borderRadius: 8,
+    overflow: 'hidden',
+    opacity: 0.8,
+  },
+  thumbnailImageHorizontal: {
+    width: '100%',
+    height: '100%',
   },
   placeName: {
     fontSize: 20,
@@ -648,8 +665,8 @@ const styles = StyleSheet.create({
   actionsContainer: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    paddingBottom: 16,
-    gap: 12,
+    paddingBottom: 12,
+    gap: 10,
   },
   actionButton: {
     flex: 1,
