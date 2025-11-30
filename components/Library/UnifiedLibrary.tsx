@@ -48,6 +48,7 @@ import {
   Compass,
   Heart,
   Home,
+  MapPin,
 } from 'lucide-react-native';
 import { lightColors, darkColors } from '@/constants/colors';
 import { UserList, ListEntry } from '@/types/library';
@@ -68,6 +69,8 @@ import ConfirmModal from '@/components/ConfirmModal';
 import ItemOptionsModal from '@/components/ItemOptionsModal';
 import FollowingFollowersList from '@/components/FollowingFollowersList';
 import LocalBusinessView from '@/components/Library/LocalBusinessView';
+import EndorsementMapView, { MapEntry } from '@/components/EndorsementMapView';
+import { geocodeAndSaveBrandLocation } from '@/services/geocodingService';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { reorderListEntries } from '@/services/firebase/listService';
@@ -318,8 +321,14 @@ export default function UnifiedLibrary({
   const [topBrandsLoadCount, setTopBrandsLoadCount] = useState(10);
   const [topBusinessesLoadCount, setTopBusinessesLoadCount] = useState(10);
 
+  // Map modal state
+  const [showMapModal, setShowMapModal] = useState(false);
+  const [geocodedBrandLocations, setGeocodedBrandLocations] = useState<Record<string, { lat: number; lng: number }>>({});
+  const [isGeocodingBrands, setIsGeocodingBrands] = useState(false);
+  const geocodingStartedRef = useRef(false); // Track if geocoding has started for current modal session
+
   // Detect larger screens for responsive text display
-  const { width } = useWindowDimensions();
+  const { width, height } = useWindowDimensions();
   const isLargeScreen = width >= 768;
 
   // Use props if provided, otherwise use context (MUST be before defaultSection calculation)
@@ -695,6 +704,182 @@ export default function UnifiedLibrary({
 
     return { brands: matchingBrands, businesses: matchingBusinesses };
   }, [addSearchQuery, brands, allBusinesses, endorsementList]);
+
+  // Convert endorsement entries to map entries (only entries with location data)
+  // Applies the same filters as the list view
+  const mapEntries = useMemo((): MapEntry[] => {
+    if (!endorsementList?.entries) return [];
+
+    // Helper to get entry category (same logic as in render)
+    const getEntryCategory = (entry: ListEntry): string => {
+      let rawCategory: string | undefined;
+      if (entry.type === 'brand') rawCategory = (entry as any).brandCategory;
+      else if (entry.type === 'business') rawCategory = (entry as any).businessCategory;
+      else if (entry.type === 'place') rawCategory = (entry as any).placeCategory;
+      return mapToCustomCategory(rawCategory);
+    };
+
+    // Helper to check if entry is local (has location data)
+    const isLocalEntry = (entry: ListEntry): boolean => {
+      if (entry.type === 'place') return true;
+      if (entry.type === 'business' && (entry as any).location) return true;
+      return false;
+    };
+
+    // Apply local filter first
+    let filteredList = endorsementList.entries;
+    if (localFilter === 'local') {
+      filteredList = filteredList.filter(entry => entry && isLocalEntry(entry));
+    }
+
+    // Then apply category filter
+    if (categoryFilter !== 'all') {
+      filteredList = filteredList.filter(entry => {
+        const categoryId = getEntryCategory(entry);
+        return categoryId === categoryFilter;
+      });
+    }
+
+    const entries: MapEntry[] = [];
+
+    filteredList.forEach((entry) => {
+      if (entry.type === 'place') {
+        const placeEntry = entry as any;
+        if (placeEntry.location?.lat && placeEntry.location?.lng) {
+          entries.push({
+            id: placeEntry.placeId,
+            name: placeEntry.placeName,
+            category: placeEntry.placeCategory,
+            address: placeEntry.placeAddress,
+            logoUrl: placeEntry.logoUrl,
+            location: {
+              lat: placeEntry.location.lat,
+              lng: placeEntry.location.lng,
+            },
+            type: 'place',
+            originalEntry: entry,
+          });
+        }
+      } else if (entry.type === 'business') {
+        const businessEntry = entry as any;
+        // Try to find full business data to get location
+        const fullBusiness = allBusinesses.find(b => b.id === businessEntry.businessId);
+        const businessInfo = fullBusiness?.businessInfo;
+        const location = businessInfo?.locations?.[0] ||
+          (businessInfo?.latitude && businessInfo?.longitude
+            ? { latitude: businessInfo.latitude, longitude: businessInfo.longitude, address: businessInfo.location }
+            : null);
+
+        if (location?.latitude && location?.longitude) {
+          entries.push({
+            id: businessEntry.businessId,
+            name: businessEntry.businessName || businessInfo?.name,
+            category: businessEntry.businessCategory || businessInfo?.category,
+            address: location.address || businessInfo?.location,
+            logoUrl: businessEntry.logoUrl || businessInfo?.logoUrl,
+            location: {
+              lat: location.latitude,
+              lng: location.longitude,
+            },
+            type: 'business',
+            originalEntry: entry,
+          });
+        }
+      } else if (entry.type === 'brand') {
+        const brandEntry = entry as any;
+        // Try to find full brand data to get location
+        const fullBrand = brands?.find(b => b.id === brandEntry.brandId);
+
+        // Check for coordinates: first from brand data, then from geocoded cache
+        let coords: { lat: number; lng: number } | null = null;
+        if (fullBrand?.latitude && fullBrand?.longitude) {
+          coords = { lat: fullBrand.latitude, lng: fullBrand.longitude };
+        } else if (brandEntry.brandId && geocodedBrandLocations[brandEntry.brandId]) {
+          coords = geocodedBrandLocations[brandEntry.brandId];
+        }
+
+        if (coords) {
+          entries.push({
+            id: brandEntry.brandId,
+            name: brandEntry.brandName || fullBrand?.name,
+            category: brandEntry.brandCategory || fullBrand?.category,
+            address: fullBrand?.location,
+            logoUrl: brandEntry.logoUrl,
+            location: coords,
+            type: 'brand',
+            originalEntry: entry,
+          });
+        }
+      }
+    });
+
+    return entries;
+  }, [endorsementList?.entries, allBusinesses, brands, geocodedBrandLocations, categoryFilter, localFilter]);
+
+  // Reset geocoding flag when modal closes
+  useEffect(() => {
+    if (!showMapModal) {
+      geocodingStartedRef.current = false;
+    }
+  }, [showMapModal]);
+
+  // Geocode brands without coordinates when map modal opens (runs only once per modal session)
+  useEffect(() => {
+    if (!showMapModal || !endorsementList?.entries || !brands) return;
+
+    // Only run geocoding once per modal session
+    if (geocodingStartedRef.current) return;
+    geocodingStartedRef.current = true;
+
+    const geocodeBrands = async () => {
+      const brandsToGeocode: Array<{ brandId: string; location: string }> = [];
+
+      // Find brands that need geocoding
+      endorsementList.entries.forEach((entry) => {
+        if (entry.type === 'brand') {
+          const brandEntry = entry as any;
+          const fullBrand = brands?.find(b => b.id === brandEntry.brandId);
+
+          // If brand has location string but no coordinates
+          if (
+            fullBrand?.location &&
+            !fullBrand.latitude &&
+            !fullBrand.longitude
+          ) {
+            brandsToGeocode.push({
+              brandId: brandEntry.brandId,
+              location: fullBrand.location,
+            });
+          }
+        }
+      });
+
+      if (brandsToGeocode.length === 0) return;
+
+      setIsGeocodingBrands(true);
+
+      // Geocode brands in parallel and save to Firebase
+      const newGeocodedLocations: Record<string, { lat: number; lng: number }> = {};
+
+      await Promise.all(
+        brandsToGeocode.map(async ({ brandId, location }) => {
+          // This geocodes and saves to Firebase so future lookups don't need geocoding
+          const coords = await geocodeAndSaveBrandLocation(brandId, location);
+          if (coords) {
+            newGeocodedLocations[brandId] = coords;
+          }
+        })
+      );
+
+      // Update state once with all results
+      if (Object.keys(newGeocodedLocations).length > 0) {
+        setGeocodedBrandLocations(prev => ({ ...prev, ...newGeocodedLocations }));
+      }
+      setIsGeocodingBrands(false);
+    };
+
+    geocodeBrands();
+  }, [showMapModal, endorsementList?.entries, brands]); // Removed geocodedBrandLocations from deps
 
   // Handle adding a brand, business, or place to endorsement list
   const handleAddToEndorsement = useCallback(async (item: any, type: 'brand' | 'business' | 'place') => {
@@ -3403,10 +3588,21 @@ export default function UnifiedLibrary({
         )}
 
         {/* Action buttons for endorsed section */}
-        {isEndorsed && canEdit && (
+        {isEndorsed && (
           <View style={styles.endorsedHeaderActions}>
+            {/* Map button - show if there are mappable entries */}
+            {mapEntries.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setShowMapModal(true)}
+                style={[styles.headerActionButton, { backgroundColor: colors.backgroundSecondary }]}
+                activeOpacity={0.7}
+              >
+                <MapPin size={20} color={colors.primary} strokeWidth={2} />
+              </TouchableOpacity>
+            )}
+
             {/* Action menu button - only show if there are items to reorder */}
-            {canReorder && (
+            {canEdit && canReorder && (
               <View>
                 <TouchableOpacity
                   onPress={(e) => {
@@ -3442,14 +3638,16 @@ export default function UnifiedLibrary({
               </View>
             )}
 
-            {/* Add button - on far right */}
-            <TouchableOpacity
-              onPress={() => setShowAddEndorsementModal(true)}
-              style={[styles.addEndorsementButton, { backgroundColor: colors.primary }]}
-              activeOpacity={0.7}
-            >
-              <Plus size={24} color={colors.white} strokeWidth={2.5} />
-            </TouchableOpacity>
+            {/* Add button - on far right (only for edit mode) */}
+            {canEdit && (
+              <TouchableOpacity
+                onPress={() => setShowAddEndorsementModal(true)}
+                style={[styles.addEndorsementButton, { backgroundColor: colors.primary }]}
+                activeOpacity={0.7}
+              >
+                <Plus size={24} color={colors.white} strokeWidth={2.5} />
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
@@ -4169,6 +4367,95 @@ export default function UnifiedLibrary({
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* Endorsement Map Modal */}
+      <Modal
+        visible={showMapModal}
+        animationType="fade"
+        transparent={true}
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowMapModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.mapModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMapModal(false)}
+        >
+          <Pressable
+            style={[
+              styles.mapModalContainer,
+              {
+                backgroundColor: colors.background,
+                width: isLargeScreen ? width * 0.8 : width * 0.95,
+                height: isLargeScreen ? height * 0.8 : height * 0.95,
+              }
+            ]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Header with close button */}
+            <View style={[styles.mapModalHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+              <Text style={[styles.mapModalTitle, { color: colors.text }]}>
+                Endorsement Map ({mapEntries.length} {mapEntries.length === 1 ? 'location' : 'locations'})
+              </Text>
+              <TouchableOpacity
+                style={[styles.mapModalCloseButton, { backgroundColor: colors.backgroundSecondary }]}
+                onPress={() => setShowMapModal(false)}
+                activeOpacity={0.7}
+              >
+                <X size={24} color={colors.text} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Map Content */}
+            <View style={styles.mapModalContent}>
+              {isGeocodingBrands && (
+                <View style={styles.geocodingIndicator}>
+                  <ActivityIndicator size="small" color="#00aaff" />
+                  <Text style={[styles.geocodingText, { color: colors.textSecondary }]}>
+                    Loading brand locations...
+                  </Text>
+                </View>
+              )}
+              {mapEntries.length > 0 ? (
+                <EndorsementMapView
+                  entries={mapEntries}
+                  mapId="endorsement-list-map"
+                  onEntryPress={(entry) => {
+                    setShowMapModal(false);
+                    // Navigate based on entry type
+                    if (entry.type === 'place') {
+                      router.push({
+                        pathname: '/place/[id]',
+                        params: { id: entry.id },
+                      });
+                    } else if (entry.type === 'business') {
+                      router.push({
+                        pathname: '/business/[id]',
+                        params: { id: entry.id },
+                      });
+                    } else if (entry.type === 'brand') {
+                      router.push({
+                        pathname: '/brand/[id]',
+                        params: { id: entry.id },
+                      });
+                    }
+                  }}
+                />
+              ) : !isGeocodingBrands ? (
+                <View style={styles.mapModalEmpty}>
+                  <MapPin size={48} color={colors.textSecondary} strokeWidth={1.5} />
+                  <Text style={[styles.mapModalEmptyText, { color: colors.text }]}>
+                    No mappable locations in this list
+                  </Text>
+                  <Text style={[styles.mapModalEmptySubtext, { color: colors.textSecondary }]}>
+                    Add places or local businesses to see them on the map
+                  </Text>
+                </View>
+              ) : null}
+            </View>
+          </Pressable>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -5157,5 +5444,73 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+  },
+  // Map modal styles
+  mapModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  mapModalContainer: {
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  mapModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingTop: Platform.OS === 'ios' ? 16 : 12,
+    paddingBottom: 12,
+    borderBottomWidth: 1,
+    minHeight: 56,
+  },
+  mapModalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+    flex: 1,
+    marginRight: 12,
+  },
+  mapModalCloseButton: {
+    width: 40,
+    height: 40,
+    borderRadius: 20,
+    alignItems: 'center',
+    justifyContent: 'center',
+    zIndex: 10,
+  },
+  mapModalContent: {
+    flex: 1,
+  },
+  geocodingIndicator: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingVertical: 8,
+    paddingHorizontal: 16,
+    backgroundColor: 'rgba(0, 170, 255, 0.1)',
+    gap: 8,
+  },
+  geocodingText: {
+    fontSize: 13,
+  },
+  mapModalEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  mapModalEmptyText: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  mapModalEmptySubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
   },
 });

@@ -107,6 +107,28 @@ export default function OnboardingScreen() {
   const colors = isDarkMode ? darkColors : lightColors;
   const insets = useSafeAreaInsets();
 
+  // Redirect users who have already completed onboarding
+  // This handles the case where a user's claim was approved while they were offline
+  useEffect(() => {
+    if (!isLoading && profile?.causes?.length > 0) {
+      // User has completed values selection
+      const isBusinessUser = params.accountType === 'business' || profile?.accountType === 'business';
+
+      if (isBusinessUser && profile?.businessInfo?.name) {
+        // Business user with approved business - they're done!
+        console.log('[Onboarding] User already has causes and businessInfo, redirecting to home');
+        router.replace('/(tabs)/home');
+        return;
+      } else if (!isBusinessUser) {
+        // Individual user with causes - they're done!
+        console.log('[Onboarding] Individual user already has causes, redirecting to home');
+        router.replace('/(tabs)/home');
+        return;
+      }
+      // Business user without businessInfo - they need to complete claim flow
+    }
+  }, [isLoading, profile?.causes?.length, profile?.businessInfo?.name, profile?.accountType, params.accountType]);
+
   // Handler to exit onboarding and sign out
   const handleExitOnboarding = async () => {
     // On web, use window.confirm since Alert.alert doesn't work well
@@ -448,7 +470,7 @@ export default function OnboardingScreen() {
             <View style={styles.headerRow}>
               <View style={styles.logoContainer}>
                 <Image
-                  source={require('@/assets/images/endorseofficial.png')}
+                  source={require('@/assets/images/endorsemobile.png')}
                   style={styles.logo}
                   resizeMode="contain"
                 />
@@ -670,7 +692,7 @@ export default function OnboardingScreen() {
           <View style={styles.headerRow}>
             <View style={styles.logoContainer}>
               <Image
-                source={require('@/assets/images/endorseofficial.png')}
+                source={require('@/assets/images/endorsemobile.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -812,9 +834,7 @@ export default function OnboardingScreen() {
             </TouchableOpacity>
 
             {/* Icon */}
-            <View style={[styles.welcomeIconContainer, { backgroundColor: colors.primary + '20' }]}>
-              <Sparkles size={40} color={colors.primary} strokeWidth={1.5} />
-            </View>
+            <Sparkles size={48} color={colors.primary} strokeWidth={1.5} style={styles.welcomeIcon} />
 
             {/* Title */}
             <Text style={[styles.welcomeTitle, { color: colors.text }]}>
@@ -1217,12 +1237,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     alignItems: 'center',
   },
-  welcomeIconContainer: {
-    width: 80,
-    height: 80,
-    borderRadius: 40,
-    justifyContent: 'center',
-    alignItems: 'center',
+  welcomeIcon: {
     marginBottom: 20,
   },
   welcomeTitle: {
