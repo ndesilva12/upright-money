@@ -107,6 +107,28 @@ export default function OnboardingScreen() {
   const colors = isDarkMode ? darkColors : lightColors;
   const insets = useSafeAreaInsets();
 
+  // Redirect users who have already completed onboarding
+  // This handles the case where a user's claim was approved while they were offline
+  useEffect(() => {
+    if (!isLoading && profile?.causes?.length > 0) {
+      // User has completed values selection
+      const isBusinessUser = params.accountType === 'business' || profile?.accountType === 'business';
+
+      if (isBusinessUser && profile?.businessInfo?.name) {
+        // Business user with approved business - they're done!
+        console.log('[Onboarding] User already has causes and businessInfo, redirecting to home');
+        router.replace('/(tabs)/home');
+        return;
+      } else if (!isBusinessUser) {
+        // Individual user with causes - they're done!
+        console.log('[Onboarding] Individual user already has causes, redirecting to home');
+        router.replace('/(tabs)/home');
+        return;
+      }
+      // Business user without businessInfo - they need to complete claim flow
+    }
+  }, [isLoading, profile?.causes?.length, profile?.businessInfo?.name, profile?.accountType, params.accountType]);
+
   // Handler to exit onboarding and sign out
   const handleExitOnboarding = async () => {
     // On web, use window.confirm since Alert.alert doesn't work well

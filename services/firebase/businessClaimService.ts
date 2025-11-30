@@ -185,17 +185,44 @@ export const getClaimByUserAndPlace = async (
 export const getApprovedClaims = async (): Promise<BusinessClaim[]> => {
   try {
     const claimsRef = collection(db, 'businessClaims');
-    const q = query(
-      claimsRef,
-      where('status', '==', 'approved'),
-      orderBy('reviewedAt', 'desc')
-    );
-    const snapshot = await getDocs(q);
 
-    return snapshot.docs.map(doc => ({
-      id: doc.id,
-      ...doc.data(),
-    })) as BusinessClaim[];
+    // Try with orderBy first (requires composite index)
+    try {
+      const q = query(
+        claimsRef,
+        where('status', '==', 'approved'),
+        orderBy('reviewedAt', 'desc')
+      );
+      const snapshot = await getDocs(q);
+      console.log('[BusinessClaimService] Found', snapshot.size, 'approved claims (with orderBy)');
+
+      return snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as BusinessClaim[];
+    } catch (indexError: any) {
+      // If index doesn't exist, fall back to query without orderBy
+      console.warn('[BusinessClaimService] Index query failed, trying without orderBy:', indexError?.message);
+
+      const q = query(
+        claimsRef,
+        where('status', '==', 'approved')
+      );
+      const snapshot = await getDocs(q);
+      console.log('[BusinessClaimService] Found', snapshot.size, 'approved claims (without orderBy)');
+
+      // Sort client-side
+      const claims = snapshot.docs.map(doc => ({
+        id: doc.id,
+        ...doc.data(),
+      })) as BusinessClaim[];
+
+      return claims.sort((a, b) => {
+        const aTime = a.reviewedAt?.seconds || 0;
+        const bTime = b.reviewedAt?.seconds || 0;
+        return bTime - aTime; // Descending order
+      });
+    }
   } catch (error) {
     console.error('[BusinessClaimService] Error getting approved claims:', error);
     return [];
