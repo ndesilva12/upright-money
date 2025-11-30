@@ -750,20 +750,60 @@ export default function BusinessDetailScreen() {
             </Text>
           )}
 
-          {/* View on Map Button - Placed above social links */}
-          {((business.businessInfo.locations && business.businessInfo.locations.length > 0) ||
-            (business.businessInfo.latitude && business.businessInfo.longitude)) && (
-            <View style={{ alignItems: 'flex-start', marginBottom: 12 }}>
+          {/* Gallery Images Section - Horizontal scroll above action buttons */}
+          {business.businessInfo.galleryImages && business.businessInfo.galleryImages.length > 0 && (
+            <ScrollView
+              horizontal
+              showsHorizontalScrollIndicator={false}
+              style={styles.galleryHorizontalScroll}
+              contentContainerStyle={styles.galleryHorizontalContent}
+            >
+              {business.businessInfo.galleryImages.map((item, index) => (
+                <TouchableOpacity
+                  key={index}
+                  style={[styles.galleryHorizontalCard, { backgroundColor: colors.backgroundSecondary }]}
+                  onPress={() => setSelectedGalleryImage(item)}
+                  activeOpacity={0.8}
+                >
+                  <Image
+                    source={{ uri: item.imageUrl }}
+                    style={styles.galleryHorizontalImage}
+                    contentFit="cover"
+                    cachePolicy="memory-disk"
+                    transition={150}
+                    placeholder={{ blurhash: 'LGF5?xoffQj[~qoffQof?bofj[ay' }}
+                  />
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
+          )}
+
+          {/* Action buttons row: Directions and Website */}
+          <View style={styles.actionButtonsRow}>
+            {/* View on Map Button */}
+            {((business.businessInfo.locations && business.businessInfo.locations.length > 0) ||
+              (business.businessInfo.latitude && business.businessInfo.longitude)) && (
               <TouchableOpacity
-                style={[styles.mapButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}
+                style={[styles.actionButton, { backgroundColor: colors.primary, borderColor: colors.primary }]}
                 onPress={handleViewOnMap}
                 activeOpacity={0.7}
               >
                 <Navigation size={18} color={colors.white} strokeWidth={2} />
-                <Text style={[styles.mapButtonText, { color: colors.white }]}>View on Map</Text>
+                <Text style={[styles.actionButtonText, { color: colors.white }]}>Directions</Text>
               </TouchableOpacity>
-            </View>
-          )}
+            )}
+
+            {/* Website Button */}
+            {business.businessInfo.website && (
+              <TouchableOpacity
+                style={[styles.actionButton, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
+                onPress={handleShopPress}
+                activeOpacity={0.7}
+              >
+                <Text style={[styles.actionButtonText, { color: colors.text }]}>Website</Text>
+              </TouchableOpacity>
+            )}
+          </View>
 
           <View style={styles.socialLinksContainer}>
             {business.businessInfo.socialMedia?.twitter && (
@@ -1018,38 +1058,6 @@ export default function BusinessDetailScreen() {
               </Text>
             )}
           </View>
-
-          {/* Gallery Images Section */}
-          {business.businessInfo.galleryImages && business.businessInfo.galleryImages.length > 0 && (
-            <View style={styles.gallerySection}>
-              <View style={styles.galleryGrid}>
-                {business.businessInfo.galleryImages.map((item, index) => (
-                  <TouchableOpacity
-                    key={index}
-                    style={[styles.galleryCard, { backgroundColor: colors.backgroundSecondary }]}
-                    onPress={() => setSelectedGalleryImage(item)}
-                    activeOpacity={0.8}
-                  >
-                    <Image
-                      source={{ uri: item.imageUrl }}
-                      style={styles.galleryCardImage}
-                      contentFit="cover"
-                      cachePolicy="memory-disk"
-                      transition={150}
-                      placeholder={{ blurhash: 'LGF5?xoffQj[~qoffQof?bofj[ay' }}
-                    />
-                    {item.caption ? (
-                      <View style={[styles.galleryCaptionOverlay, { backgroundColor: colors.background + 'DD' }]}>
-                        <Text style={[styles.galleryCaptionText, { color: colors.text }]} numberOfLines={2}>
-                          {item.caption}
-                        </Text>
-                      </View>
-                    ) : null}
-                  </TouchableOpacity>
-                ))}
-              </View>
-            </View>
-          )}
 
           {/* Endorsements Section */}
           <View style={styles.section}>
@@ -1980,7 +1988,46 @@ const styles = StyleSheet.create({
     fontSize: 18,
     fontWeight: '600' as const,
   },
-  // Gallery Styles
+  // Horizontal Gallery Styles
+  galleryHorizontalScroll: {
+    marginBottom: 16,
+  },
+  galleryHorizontalContent: {
+    paddingHorizontal: 0,
+    gap: 10,
+  },
+  galleryHorizontalCard: {
+    width: 120,
+    height: 90,
+    borderRadius: 10,
+    overflow: 'hidden',
+  },
+  galleryHorizontalImage: {
+    width: '100%',
+    height: '100%',
+  },
+  // Action Buttons Row
+  actionButtonsRow: {
+    flexDirection: 'row',
+    gap: 10,
+    marginBottom: 12,
+  },
+  actionButton: {
+    flex: 1,
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'center',
+    gap: 6,
+    paddingVertical: 12,
+    paddingHorizontal: 16,
+    borderRadius: 10,
+    borderWidth: 1,
+  },
+  actionButtonText: {
+    fontSize: 14,
+    fontWeight: '600' as const,
+  },
+  // Legacy Gallery Styles (kept for modal)
   gallerySection: {
     marginTop: 16,
     marginBottom: 8,
