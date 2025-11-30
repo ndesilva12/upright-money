@@ -22,6 +22,7 @@ import { useData } from '@/contexts/DataContext';
 import { useState, useEffect, useRef } from 'react';
 import { getLogoUrl } from '@/lib/logo';
 import { getList } from '@/services/firebase/listService';
+import { getPlacePhotoUrl } from '@/services/firebase/placesService';
 import { UserList, ListEntry } from '@/types/library';
 import * as Clipboard from 'expo-clipboard';
 import EndorsedBadge from '@/components/EndorsedBadge';
@@ -204,6 +205,53 @@ export default function SharedListScreen() {
           <View style={styles.entryInfo}>
             <Text style={[styles.entryName, { color: colors.text }]}>{businessName}</Text>
             <Text style={[styles.entryType, { color: colors.textSecondary }]}>Business</Text>
+          </View>
+          <ExternalLink size={20} color={colors.textSecondary} strokeWidth={2} />
+        </TouchableOpacity>
+      );
+    }
+
+    if (entry.type === 'place') {
+      const placeEntry = entry as any;
+      const placeName = placeEntry.placeName || entry.name || 'Unknown Place';
+      // Get logo URL from cached logoUrl, or generate from photoReference
+      let logoUrl = placeEntry.logoUrl || '';
+      if (!logoUrl && placeEntry.photoReference) {
+        logoUrl = getPlacePhotoUrl(placeEntry.photoReference);
+      }
+      if (!logoUrl && placeEntry.website) {
+        logoUrl = getLogoUrl(placeEntry.website, { size: 128 });
+      }
+
+      return (
+        <TouchableOpacity
+          key={entry.id}
+          style={[styles.entryCard, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}
+          onPress={() => {
+            if (placeEntry.placeId) {
+              router.push(`/place/${placeEntry.placeId}`);
+            }
+          }}
+          activeOpacity={0.7}
+        >
+          <View style={styles.entryImageContainer}>
+            {logoUrl ? (
+              <Image
+                source={{ uri: logoUrl }}
+                style={styles.entryImage}
+                contentFit="cover"
+              />
+            ) : (
+              <View style={[styles.entryImagePlaceholder, { backgroundColor: colors.primary }]}>
+                <Text style={styles.entryImagePlaceholderText}>{placeName.charAt(0)}</Text>
+              </View>
+            )}
+          </View>
+          <View style={styles.entryInfo}>
+            <Text style={[styles.entryName, { color: colors.text }]}>{placeName}</Text>
+            <Text style={[styles.entryType, { color: colors.textSecondary }]}>
+              {placeEntry.placeCategory || 'Local Business'}
+            </Text>
           </View>
           <ExternalLink size={20} color={colors.textSecondary} strokeWidth={2} />
         </TouchableOpacity>
