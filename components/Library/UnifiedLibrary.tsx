@@ -3590,19 +3590,8 @@ export default function UnifiedLibrary({
         {/* Action buttons for endorsed section */}
         {isEndorsed && (
           <View style={styles.endorsedHeaderActions}>
-            {/* Map button - show if there are mappable entries */}
-            {mapEntries.length > 0 && (
-              <TouchableOpacity
-                onPress={() => setShowMapModal(true)}
-                style={[styles.headerActionButton, { backgroundColor: colors.backgroundSecondary }]}
-                activeOpacity={0.7}
-              >
-                <MapPin size={20} color={colors.primary} strokeWidth={2} />
-              </TouchableOpacity>
-            )}
-
-            {/* Action menu button - only show if there are items to reorder */}
-            {canEdit && canReorder && (
+            {/* Action menu button - moved to left of map button */}
+            {canEdit && (
               <View>
                 <TouchableOpacity
                   onPress={(e) => {
@@ -3620,22 +3609,48 @@ export default function UnifiedLibrary({
                 {/* Action menu dropdown */}
                 {showEndorsedActionMenu && (
                   <View style={[styles.endorsedActionDropdown, { backgroundColor: colors.backgroundSecondary, borderColor: colors.border }]}>
+                    {canReorder && (
+                      <TouchableOpacity
+                        style={styles.endorsedActionItem}
+                        onPress={() => {
+                          setShowEndorsedActionMenu(false);
+                          setIsReorderMode(true);
+                          setReorderingListId(endorsementList.id);
+                          setLocalEntries([...endorsementList.entries]);
+                        }}
+                        activeOpacity={0.7}
+                      >
+                        <GripVertical size={16} color={colors.text} strokeWidth={2} />
+                        <Text style={[styles.endorsedActionText, { color: colors.text }]}>Reorder</Text>
+                      </TouchableOpacity>
+                    )}
                     <TouchableOpacity
                       style={styles.endorsedActionItem}
                       onPress={() => {
                         setShowEndorsedActionMenu(false);
-                        setIsReorderMode(true);
-                        setReorderingListId(endorsementList.id);
-                        setLocalEntries([...endorsementList.entries]);
+                        if (endorsementList) {
+                          handleShareList(endorsementList);
+                        }
                       }}
                       activeOpacity={0.7}
                     >
-                      <GripVertical size={16} color={colors.text} strokeWidth={2} />
-                      <Text style={[styles.endorsedActionText, { color: colors.text }]}>Reorder</Text>
+                      <Share2 size={16} color={colors.text} strokeWidth={2} />
+                      <Text style={[styles.endorsedActionText, { color: colors.text }]}>Share</Text>
                     </TouchableOpacity>
                   </View>
                 )}
               </View>
+            )}
+
+            {/* Map button - show if there are mappable entries */}
+            {mapEntries.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setShowMapModal(true)}
+                style={[styles.headerActionButton, { backgroundColor: colors.backgroundSecondary }]}
+                activeOpacity={0.7}
+              >
+                <MapPin size={20} color={colors.primary} strokeWidth={2} />
+              </TouchableOpacity>
             )}
 
             {/* Add button - on far right (only for edit mode) */}
