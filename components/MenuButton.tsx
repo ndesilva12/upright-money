@@ -99,7 +99,7 @@ export default function MenuButton() {
           >
             <View style={styles.logoContainer}>
               <Image
-                source={require('@/assets/images/endorseofficial.png')}
+                source={require('@/assets/images/endorsemobile.png')}
                 style={styles.menuLogo}
                 resizeMode="contain"
               />

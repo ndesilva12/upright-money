@@ -345,7 +345,7 @@ export default function SignUpScreen() {
           >
             <View style={styles.logoContainer}>
               <Image
-                source={require('@/assets/images/endorseofficial.png')}
+                source={require('@/assets/images/endorsemobile.png')}
                 style={styles.logo}
                 resizeMode="contain"
               />
@@ -390,7 +390,7 @@ export default function SignUpScreen() {
         >
           <View style={styles.logoContainer}>
             <Image
-              source={require('@/assets/images/endorseofficial.png')}
+              source={require('@/assets/images/endorsemobile.png')}
               style={styles.logo}
               resizeMode="contain"
             />
