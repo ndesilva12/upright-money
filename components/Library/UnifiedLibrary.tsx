@@ -48,6 +48,7 @@ import {
   Compass,
   Heart,
   Home,
+  MapPin,
 } from 'lucide-react-native';
 import { lightColors, darkColors } from '@/constants/colors';
 import { UserList, ListEntry } from '@/types/library';
@@ -68,6 +69,7 @@ import ConfirmModal from '@/components/ConfirmModal';
 import ItemOptionsModal from '@/components/ItemOptionsModal';
 import FollowingFollowersList from '@/components/FollowingFollowersList';
 import LocalBusinessView from '@/components/Library/LocalBusinessView';
+import EndorsementMapView, { MapEntry } from '@/components/EndorsementMapView';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db } from '@/firebase';
 import { reorderListEntries } from '@/services/firebase/listService';
@@ -317,6 +319,9 @@ export default function UnifiedLibrary({
   const [loadingTopBusinesses, setLoadingTopBusinesses] = useState(false);
   const [topBrandsLoadCount, setTopBrandsLoadCount] = useState(10);
   const [topBusinessesLoadCount, setTopBusinessesLoadCount] = useState(10);
+
+  // Map modal state
+  const [showMapModal, setShowMapModal] = useState(false);
 
   // Detect larger screens for responsive text display
   const { width } = useWindowDimensions();
@@ -695,6 +700,80 @@ export default function UnifiedLibrary({
 
     return { brands: matchingBrands, businesses: matchingBusinesses };
   }, [addSearchQuery, brands, allBusinesses, endorsementList]);
+
+  // Convert endorsement entries to map entries (only entries with location data)
+  const mapEntries = useMemo((): MapEntry[] => {
+    if (!endorsementList?.entries) return [];
+
+    const entries: MapEntry[] = [];
+
+    endorsementList.entries.forEach((entry) => {
+      if (entry.type === 'place') {
+        const placeEntry = entry as any;
+        if (placeEntry.location?.lat && placeEntry.location?.lng) {
+          entries.push({
+            id: placeEntry.placeId,
+            name: placeEntry.placeName,
+            category: placeEntry.placeCategory,
+            address: placeEntry.placeAddress,
+            logoUrl: placeEntry.logoUrl,
+            location: {
+              lat: placeEntry.location.lat,
+              lng: placeEntry.location.lng,
+            },
+            type: 'place',
+            originalEntry: entry,
+          });
+        }
+      } else if (entry.type === 'business') {
+        const businessEntry = entry as any;
+        // Try to find full business data to get location
+        const fullBusiness = allBusinesses.find(b => b.id === businessEntry.businessId);
+        const businessInfo = fullBusiness?.businessInfo;
+        const location = businessInfo?.locations?.[0] ||
+          (businessInfo?.latitude && businessInfo?.longitude
+            ? { latitude: businessInfo.latitude, longitude: businessInfo.longitude, address: businessInfo.location }
+            : null);
+
+        if (location?.latitude && location?.longitude) {
+          entries.push({
+            id: businessEntry.businessId,
+            name: businessEntry.businessName || businessInfo?.name,
+            category: businessEntry.businessCategory || businessInfo?.category,
+            address: location.address || businessInfo?.location,
+            logoUrl: businessEntry.logoUrl || businessInfo?.logoUrl,
+            location: {
+              lat: location.latitude,
+              lng: location.longitude,
+            },
+            type: 'business',
+            originalEntry: entry,
+          });
+        }
+      } else if (entry.type === 'brand') {
+        const brandEntry = entry as any;
+        // Try to find full brand data to get location
+        const fullBrand = brands?.find(b => b.id === brandEntry.brandId);
+        if (fullBrand?.latitude && fullBrand?.longitude) {
+          entries.push({
+            id: brandEntry.brandId,
+            name: brandEntry.brandName || fullBrand.name,
+            category: brandEntry.brandCategory || fullBrand.category,
+            address: fullBrand.location,
+            logoUrl: brandEntry.logoUrl,
+            location: {
+              lat: fullBrand.latitude,
+              lng: fullBrand.longitude,
+            },
+            type: 'brand',
+            originalEntry: entry,
+          });
+        }
+      }
+    });
+
+    return entries;
+  }, [endorsementList?.entries, allBusinesses, brands]);
 
   // Handle adding a brand, business, or place to endorsement list
   const handleAddToEndorsement = useCallback(async (item: any, type: 'brand' | 'business' | 'place') => {
@@ -3403,10 +3482,21 @@ export default function UnifiedLibrary({
         )}
 
         {/* Action buttons for endorsed section */}
-        {isEndorsed && canEdit && (
+        {isEndorsed && (
           <View style={styles.endorsedHeaderActions}>
+            {/* Map button - show if there are mappable entries */}
+            {mapEntries.length > 0 && (
+              <TouchableOpacity
+                onPress={() => setShowMapModal(true)}
+                style={[styles.headerActionButton, { backgroundColor: colors.backgroundSecondary }]}
+                activeOpacity={0.7}
+              >
+                <MapPin size={20} color={colors.primary} strokeWidth={2} />
+              </TouchableOpacity>
+            )}
+
             {/* Action menu button - only show if there are items to reorder */}
-            {canReorder && (
+            {canEdit && canReorder && (
               <View>
                 <TouchableOpacity
                   onPress={(e) => {
@@ -3442,14 +3532,16 @@ export default function UnifiedLibrary({
               </View>
             )}
 
-            {/* Add button - on far right */}
-            <TouchableOpacity
-              onPress={() => setShowAddEndorsementModal(true)}
-              style={[styles.addEndorsementButton, { backgroundColor: colors.primary }]}
-              activeOpacity={0.7}
-            >
-              <Plus size={24} color={colors.white} strokeWidth={2.5} />
-            </TouchableOpacity>
+            {/* Add button - on far right (only for edit mode) */}
+            {canEdit && (
+              <TouchableOpacity
+                onPress={() => setShowAddEndorsementModal(true)}
+                style={[styles.addEndorsementButton, { backgroundColor: colors.primary }]}
+                activeOpacity={0.7}
+              >
+                <Plus size={24} color={colors.white} strokeWidth={2.5} />
+              </TouchableOpacity>
+            )}
           </View>
         )}
       </View>
@@ -4169,6 +4261,80 @@ export default function UnifiedLibrary({
             </ScrollView>
           </View>
         </View>
+      </Modal>
+
+      {/* Endorsement Map Modal */}
+      <Modal
+        visible={showMapModal}
+        animationType="fade"
+        transparent={true}
+        statusBarTranslucent={true}
+        onRequestClose={() => setShowMapModal(false)}
+      >
+        <TouchableOpacity
+          style={styles.mapModalOverlay}
+          activeOpacity={1}
+          onPress={() => setShowMapModal(false)}
+        >
+          <Pressable
+            style={[styles.mapModalContainer, { backgroundColor: colors.background }]}
+            onPress={(e) => e.stopPropagation()}
+          >
+            {/* Header with close button */}
+            <View style={[styles.mapModalHeader, { backgroundColor: colors.background, borderBottomColor: colors.border }]}>
+              <Text style={[styles.mapModalTitle, { color: colors.text }]}>
+                Endorsement Map ({mapEntries.length} {mapEntries.length === 1 ? 'location' : 'locations'})
+              </Text>
+              <TouchableOpacity
+                style={[styles.mapModalCloseButton, { backgroundColor: colors.backgroundSecondary }]}
+                onPress={() => setShowMapModal(false)}
+                activeOpacity={0.7}
+              >
+                <X size={24} color={colors.text} strokeWidth={2} />
+              </TouchableOpacity>
+            </View>
+
+            {/* Map Content */}
+            <View style={styles.mapModalContent}>
+              {mapEntries.length > 0 ? (
+                <EndorsementMapView
+                  entries={mapEntries}
+                  mapId="endorsement-list-map"
+                  onEntryPress={(entry) => {
+                    setShowMapModal(false);
+                    // Navigate based on entry type
+                    if (entry.type === 'place') {
+                      router.push({
+                        pathname: '/place/[id]',
+                        params: { id: entry.id },
+                      });
+                    } else if (entry.type === 'business') {
+                      router.push({
+                        pathname: '/business/[id]',
+                        params: { id: entry.id },
+                      });
+                    } else if (entry.type === 'brand') {
+                      router.push({
+                        pathname: '/brand/[id]',
+                        params: { id: entry.id },
+                      });
+                    }
+                  }}
+                />
+              ) : (
+                <View style={styles.mapModalEmpty}>
+                  <MapPin size={48} color={colors.textSecondary} strokeWidth={1.5} />
+                  <Text style={[styles.mapModalEmptyText, { color: colors.text }]}>
+                    No mappable locations in this list
+                  </Text>
+                  <Text style={[styles.mapModalEmptySubtext, { color: colors.textSecondary }]}>
+                    Add places or local businesses to see them on the map
+                  </Text>
+                </View>
+              )}
+            </View>
+          </Pressable>
+        </TouchableOpacity>
       </Modal>
     </View>
   );
@@ -5157,5 +5323,60 @@ const styles = StyleSheet.create({
     color: '#FFFFFF',
     fontSize: 13,
     fontWeight: '600',
+  },
+  // Map modal styles
+  mapModalOverlay: {
+    flex: 1,
+    backgroundColor: 'rgba(0, 0, 0, 0.5)',
+    justifyContent: 'center',
+    alignItems: 'center',
+    padding: 16,
+  },
+  mapModalContainer: {
+    width: '100%',
+    maxWidth: 600,
+    height: '80%',
+    maxHeight: 600,
+    borderRadius: 16,
+    overflow: 'hidden',
+  },
+  mapModalHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingHorizontal: 16,
+    paddingVertical: 12,
+    borderBottomWidth: 1,
+  },
+  mapModalTitle: {
+    fontSize: 17,
+    fontWeight: '700',
+  },
+  mapModalCloseButton: {
+    width: 36,
+    height: 36,
+    borderRadius: 18,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  mapModalContent: {
+    flex: 1,
+  },
+  mapModalEmpty: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+    padding: 32,
+  },
+  mapModalEmptyText: {
+    fontSize: 17,
+    fontWeight: '600',
+    marginTop: 16,
+    textAlign: 'center',
+  },
+  mapModalEmptySubtext: {
+    fontSize: 14,
+    marginTop: 8,
+    textAlign: 'center',
   },
 });
